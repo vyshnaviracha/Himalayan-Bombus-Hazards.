@@ -790,4 +790,67 @@ Coordinate Reference: WGS84 (Decimal Degrees)
 > cat("Color Palette: ColorBrewer YlOrRd (4-class)\n")
 Color Palette: ColorBrewer YlOrRd (4-class)
 > cat("Distance Metric: Euclidean Proximity to Digitized MBT\n")
+
 Distance Metric: Euclidean Proximity to Digitized MBT
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+
+# 1. Load your processed 'bee_hazards' data (The 148 filtered records)
+# This assumes you ran the previous proximity code successfully.
+
+# 2. Advanced Statistical Grouping by Species
+# We calculate 'Occurrence Count' and 'Median Distance to Fault'
+species_risk_data <- bee_hazards %>%
+  group_by(species) %>%
+  summarise(
+    occurrence_count = n(),
+    median_dist_to_mbt = median(dist_to_mbt),
+    # Calculate a "risk percentage" (records < 1 degree from fault)
+    high_risk_prop = sum(dist_to_mbt < 1.0) / n()
+  ) %>%
+  # Filter out rare species (singletons) to make the plot clean
+  filter(occurrence_count > 1) %>%
+  # Sort by count for better visualization
+  arrange(desc(occurrence_count))
+
+# 3. GENERATE THE RISK PROFILE VISUALIZATION
+risk_profile_fig <- ggplot(species_risk_data) +
+  # Create "Risk zones" (Shaded background)
+  annotate("rect", xmin=0, xmax=1.0, ymin=0, ymax=Inf, fill="#fff5f0", alpha=0.5) +
+  annotate("rect", xmin=1.0, xmax=2.0, ymin=0, ymax=Inf, fill="#f9f9f9", alpha=0.5) +
+  
+  # Plot the species as points
+  # Size = Occurrence Count, Color = Proximity to Danger
+  geom_point(aes(x = median_dist_to_mbt, y = reorder(species, occurrence_count), 
+                 size = occurrence_count, color = median_dist_to_mbt), alpha = 0.8) +
+  
+  # Labels and text annotations
+  geom_text(aes(x = median_dist_to_mbt, y = reorder(species, occurrence_count), 
+                label = paste0("n=", occurrence_count)), 
+            hjust = -0.3, size = 3, color = "gray20") +
+  
+  # Styling for npj Natural Hazards
+  scale_size_continuous(range = c(2, 6), guide = "none") +
+  scale_color_gradient(low = "#e31a1c", high = "#feb24c", name = "Median Dist. to MBT") +
+  
+  scale_x_continuous(limits = c(0, 3.5), breaks = seq(0, 3.5, by=0.5)) +
+  
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 9, face = "italic"),
+    axis.title = element_text(face = "bold"),
+    plot.title = element_text(size = 14, hjust = 0.5),
+    panel.grid.major.y = element_blank(),
+    legend.position = "right"
+  ) +
+  labs(
+    title = "Figure 6: Himalayan Bombus Species-Specific Seismic Risk Profiles",
+    subtitle = "Analysis of n=148 records against the Main Boundary Thrust (MBT) hazard front",
+    x = "Median Euclidean Distance to MBT (approx. degrees)",
+    y = "Species (Grouped by Total Occurrences)"
+  )
+
+# Output for Publication
+print(risk_profile_fig)
+ggsave("D:/GBIF Bombus/Figure6_Species_Risk.pdf", risk_profile_fig, width = 11, height = 7, device = "pdf")
